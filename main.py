@@ -1,6 +1,5 @@
-from fastapi import FastAPI, File, Path, UploadFile
+from fastapi import FastAPI, UploadFile
 from dotenv import load_dotenv
-from pathlib import Path
 import os
 import aiohttp
 import asyncio
@@ -32,20 +31,27 @@ async def convert_speech(file: UploadFile):
         data = await r.json()
         transcript_id = data["id"]
 
-    c = 1
+    c = 3
     while True:
         async with SESSION.get(
-            STT_ENDPOINT + f"transcript{transcript_id}", headers=STT_HEADERS
+            STT_ENDPOINT + f"transcript/{transcript_id}", headers=STT_HEADERS
         ) as r:
             data = await r.json()
 
-        if data["status"] in ("error", "ok"):
+        if data["status"] == "error":
+            return {}
+
+        if data["status"] == "completed":
             break
 
-        await asyncio.sleep(0.5**c)
-        c += 1
+        await asyncio.sleep(c)
 
-    return data["words"]
+        c += 3
+
+    with open(transcript_id, "w") as f:
+        f.write(await r.text())
+
+    return data
 
 
 async def read_file(data: UploadFile):
