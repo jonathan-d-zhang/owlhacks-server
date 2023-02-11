@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    tty: true
+    depends_on:
+      - "redis"
+
+  redis:
+    image: redis:7.0.8-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis
+      - db:/data
+
+volumes:
+  db:
