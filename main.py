@@ -6,8 +6,13 @@ import asyncio
 import aiohttp
 import aioredis
 import random
+from pathlib import Path
 
 load_dotenv()
+
+PARENT = Path(__file__).parent
+TRANSCRIPTS = PARENT / "transcripts"
+TRANSCRIPTS.mkdir(exist_ok=True)
 
 STT_ENDPOINT = "https://api.assemblyai.com/v2/"
 STT_HEADERS = {"authorization": os.environ["STT_KEY"]}
@@ -19,16 +24,21 @@ app = FastAPI()
 
 @app.post("/open", status_code=201)
 async def open_room():
-    #while await REDIS_SESSION.sismember("keys", key := random.randrange(10**6, 10**7)):
-    #    pass
-    key = 10
+    while await REDIS_SESSION.sismember(
+        "keys", key := random.randrange(10**6, 10**7)
+    ):
+        pass
     await REDIS_SESSION.sadd("keys", key)
 
     return key
 
 
 @app.post("/stt/{key}")
-async def convert_speech(key: int, file: UploadFile):
+async def convert_speech(key: int, file: UploadFile, response: Response):
+    if not await REDIS_SESSION.sismember("keys", key):
+        response.status_code = 403
+        return {"message": "Invalid key"}
+
     async with HTTP_SESSION.post(
         STT_ENDPOINT + "upload", headers=STT_HEADERS, data=read_file(file)
     ) as r:
@@ -55,7 +65,14 @@ async def convert_speech(key: int, file: UploadFile):
         await asyncio.sleep(c)
         c += 3
 
-    await REDIS_SESSION.xadd(str(key), {"data": str(data)})
+    tdir = TRANSCRIPTS / str(key)
+    tdir.mkdir(exist_ok=True)
+    with open(tdir / transcript_id, "w") as f:
+        f.write(str(data))
+
+    for w in data["words"]:
+        await REDIS_SESSION.xadd(str(key), {"word": w["text"]})
+
 
 @app.get("/text/{key}")
 async def get_text(key: int, response: Response):
@@ -67,6 +84,7 @@ async def get_text(key: int, response: Response):
 
     return data
 
+
 async def read_file(data: UploadFile):
-    while chunk := await data.read(1 << 10):
+    while chunk := await data.read(1 << 15):
         yield chunk
