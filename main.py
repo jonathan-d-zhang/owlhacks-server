@@ -74,13 +74,13 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         await REDIS_SESSION.xadd(str(key), {"word": w["text"]})
 
 
-@app.get("/text/{key}")
-async def get_text(key: int, response: Response):
+@app.get("/text")
+async def get_text(key: int, response: Response, start: str = "-"):
     if not await REDIS_SESSION.sismember("keys", key):
         response.status_code = 403
         return
 
-    data = await REDIS_SESSION.xrange(str(key))
+    data = await REDIS_SESSION.xrange(str(key), min=start)
 
     return data
 
