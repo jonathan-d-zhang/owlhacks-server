@@ -1,11 +1,12 @@
 from fastapi import FastAPI, UploadFile, Response
 from dotenv import load_dotenv
-import os
+import re
 import aiohttp
 import asyncio
 import aiohttp
 import aioredis
 import random
+import os
 from pathlib import Path
 
 load_dotenv()
@@ -33,8 +34,13 @@ async def open_room():
     return key
 
 
+PAT = re.compile(r"(\d+)")
+
+
 @app.post("/stt/{key}")
 async def convert_speech(key: int, file: UploadFile, response: Response):
+    order = PAT.match(file.filename)
+
     if not await REDIS_SESSION.sismember("keys", key):
         response.status_code = 403
         return {"message": "Invalid key"}
@@ -50,28 +56,9 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         data = await r.json()
         transcript_id = data["id"]
 
-    c = 3
-    while True:
-        async with HTTP_SESSION.get(
-            STT_ENDPOINT + f"transcript/{transcript_id}", headers=STT_HEADERS
-        ) as r:
-            data = await r.json()
+    asyncio.create_task(wait_for_transcription(key, transcript_id, int(order.group(1))))
 
-        if data["status"] == "error":
-            return {}
-        if data["status"] == "completed":
-            break
-
-        await asyncio.sleep(c)
-        c += 3
-
-    tdir = TRANSCRIPTS / str(key)
-    tdir.mkdir(exist_ok=True)
-    with open(tdir / transcript_id, "w") as f:
-        f.write(str(data))
-
-    for w in data["words"]:
-        await REDIS_SESSION.xadd(str(key), {"word": w["text"]})
+    response.status_code = 201
 
 
 @app.get("/text/{key}")
@@ -93,3 +80,28 @@ async def get_text(key: int, response: Response, start: str = "-"):
 async def read_file(data: UploadFile):
     while chunk := await data.read(1 << 15):
         yield chunk
+
+
+async def wait_for_transcription(key: int, transcript_id: str, order: int):
+    c = 3
+    while True:
+        async with HTTP_SESSION.get(
+            STT_ENDPOINT + f"transcript/{transcript_id}", headers=STT_HEADERS
+        ) as r:
+            data = await r.json()
+
+        if data["status"] == "error":
+            return {}
+        if data["status"] == "completed":
+            break
+
+        await asyncio.sleep(c)
+        c += 3
+
+    tdir = TRANSCRIPTS / str(key)
+    tdir.mkdir(exist_ok=True)
+    with open(tdir / transcript_id, "w") as f:
+        f.write(str(data))
+
+    for w in data["words"]:
+        await REDIS_SESSION.xadd(str(key), {"order": order, "word": w["text"]})
