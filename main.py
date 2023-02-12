@@ -46,7 +46,7 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         response.status_code = 403
         return {"message": "Invalid key"}
 
-    asyncio.create_task(wait_for_transcription(file, key, transcript_id, order))
+    asyncio.create_task(wait_for_transcription(file, key, order))
 
     response.status_code = 201
 
@@ -72,7 +72,7 @@ async def read_file(data: UploadFile):
         yield chunk
 
 
-async def wait_for_transcription(file, key: int, transcript_id: str, order: int):
+async def wait_for_transcription(file, key: int, order: int):
     print("Running")
     async with HTTP_SESSION.post(
         STT_ENDPOINT + "upload", headers=STT_HEADERS, data=read_file(file)
