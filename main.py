@@ -39,7 +39,7 @@ PAT = re.compile(r"(\d+)")
 
 @app.post("/stt/{key}")
 async def convert_speech(key: int, file: UploadFile, response: Response):
-    order = PAT.match(file.filename)
+    order = PAT.findall(file.filename)[0]
 
     if not await REDIS_SESSION.sismember("keys", key):
         response.status_code = 403
