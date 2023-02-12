@@ -74,15 +74,20 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         await REDIS_SESSION.xadd(str(key), {"word": w["text"]})
 
 
-@app.get("/text")
+@app.get("/text/{key}")
 async def get_text(key: int, response: Response, start: str = "-"):
     if not await REDIS_SESSION.sismember("keys", key):
         response.status_code = 403
         return
 
     data = await REDIS_SESSION.xrange(str(key), min=start)
+    print(data)
 
-    return data
+    out = []
+    for start, d in data:
+        out.append(dict(start=start, word=d[b"word"]))
+
+    return out
 
 
 async def read_file(data: UploadFile):
