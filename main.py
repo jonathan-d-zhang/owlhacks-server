@@ -46,36 +46,8 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         response.status_code = 403
         return {"message": "Invalid key"}
 
-    asyncio.create_task(wait_for_transcription(file, key, order))
-
-    response.status_code = 201
-
-
-@app.get("/text/{key}")
-async def get_text(key: int, response: Response, start: str = "-"):
-    if not await REDIS_SESSION.sismember("keys", key):
-        response.status_code = 403
-        return
-
-    data = await REDIS_SESSION.xrange(str(key), min=start)
-    print(data)
-
-    out = []
-    for start, d in data:
-        out.append(dict(start=start, word=d[b"word"]))
-
-    return out
-
-
-async def read_file(data: UploadFile):
-    while chunk := await data.read(1 << 15):
-        yield chunk
-
-
-async def wait_for_transcription(file, key: int, order: int):
-    print("Running")
     async with HTTP_SESSION.post(
-        STT_ENDPOINT + "upload", headers=STT_HEADERS, data=read_file(file)
+        STT_ENDPOINT + "upload", headers=STT_HEADERS, data=await file.read()
     ) as r:
         url = (await r.json())["upload_url"]
 
@@ -107,3 +79,27 @@ async def wait_for_transcription(file, key: int, order: int):
 
     for w in data["words"]:
         await REDIS_SESSION.xadd(str(key), {"order": order, "word": w["text"]})
+
+    response.status_code = 201
+
+
+@app.get("/text/{key}")
+async def get_text(key: int, response: Response, start: str = "-"):
+    if not await REDIS_SESSION.sismember("keys", key):
+        response.status_code = 403
+        return
+
+    data = await REDIS_SESSION.xrange(str(key), min=start)
+    print(data)
+
+    out = []
+    for start, d in data:
+        out.append(dict(start=start, word=d[b"word"]))
+
+    return out
+
+
+async def read_file(data: UploadFile):
+    while chunk := await data.read(1 << 15):
+        yield chunk
+
