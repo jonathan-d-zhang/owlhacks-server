@@ -8,6 +8,7 @@ import aioredis
 import random
 import os
 from pathlib import Path
+import time
 
 load_dotenv()
 
@@ -57,6 +58,7 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         data = await r.json()
         transcript_id = data["id"]
 
+    start = time.perf_counter()
     c = 3
     while True:
         async with HTTP_SESSION.get(
@@ -81,6 +83,8 @@ async def convert_speech(key: int, file: UploadFile, response: Response):
         await REDIS_SESSION.xadd(str(key), {"order": order, "word": w["text"]})
 
     response.status_code = 201
+    end = time.perf_counter()
+    print(f"elapsed {end - start}")
 
 
 @app.get("/text/{key}")
