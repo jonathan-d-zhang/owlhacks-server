@@ -39,24 +39,14 @@ PAT = re.compile(r"(\d+)")
 
 @app.post("/stt/{key}")
 async def convert_speech(key: int, file: UploadFile, response: Response):
-    order = PAT.findall(file.filename)[0]
+    file.filename = file.filename or "1000000000000000000"
+    order = int(PAT.findall(file.filename)[0])
 
     if not await REDIS_SESSION.sismember("keys", key):
         response.status_code = 403
         return {"message": "Invalid key"}
 
-    async with HTTP_SESSION.post(
-        STT_ENDPOINT + "upload", headers=STT_HEADERS, data=read_file(file)
-    ) as r:
-        url = (await r.json())["upload_url"]
-
-    async with HTTP_SESSION.post(
-        STT_ENDPOINT + "transcript", json={"audio_url": url}, headers=STT_HEADERS
-    ) as r:
-        data = await r.json()
-        transcript_id = data["id"]
-
-    asyncio.create_task(wait_for_transcription(key, transcript_id, int(order.group(1))))
+    asyncio.create_task(wait_for_transcription(file, key, transcript_id, order))
 
     response.status_code = 201
 
@@ -82,7 +72,19 @@ async def read_file(data: UploadFile):
         yield chunk
 
 
-async def wait_for_transcription(key: int, transcript_id: str, order: int):
+async def wait_for_transcription(file, key: int, transcript_id: str, order: int):
+    print("Running")
+    async with HTTP_SESSION.post(
+        STT_ENDPOINT + "upload", headers=STT_HEADERS, data=read_file(file)
+    ) as r:
+        url = (await r.json())["upload_url"]
+
+    async with HTTP_SESSION.post(
+        STT_ENDPOINT + "transcript", json={"audio_url": url}, headers=STT_HEADERS
+    ) as r:
+        data = await r.json()
+        transcript_id = data["id"]
+
     c = 3
     while True:
         async with HTTP_SESSION.get(
